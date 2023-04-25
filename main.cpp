@@ -51,6 +51,7 @@ class Entity {
             Calculate();
         }
 
+        // TODO: add complex raycasting slices/2 bounding boxes, allow virtual overrides
         bool RayHit(Ray r) {
             return GetRayCollisionBox(r, _bounds).hit;
         }
