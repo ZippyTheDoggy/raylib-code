@@ -11,146 +11,167 @@
 // Vector3 math operations for ease of use
 #include "../util/V3ops.h"
 
-class Cube {
+const float DEFAULT_LINE_MARGIN = 0.1f;
+
+class Entity {
     private:
-        Vector3 position;
-        Vector3 size;
-        bool _current = false;
-        Mesh mesh;
-        Model model;
-        BoundingBox bounding;
-        Color col;
+        Vector3 _position;
+        Vector3 _size;
+        Model _model;
+        Mesh _mesh;
+        BoundingBox _bounds;
+        void Calculate() {
+            _model = LoadModelFromMesh(_mesh);
+            _bounds = GetModelBoundingBox(_model);
+            _bounds.min += _position; // offset bounding position for correct hitreg
+            _bounds.max += _position; // offset bounding position for correct hitreg
+        }
     public:
-        Cube(Vector3 pos, Vector3 siz, Color c) {
-            position = pos;
-            size = siz;
-            col = c;
+         Entity(Vector3 position, Vector3 size, Mesh mesh) : 
+            _position(position), _size(size), _mesh(mesh) {
+                Calculate();
+        };
+        void DrawBounding(Color color) {
+            DrawBoundingBox(_bounds, color);
+        };
+        void DrawLines(Color lc, float margin = DEFAULT_LINE_MARGIN) {
+            DrawModelWires(_model, _position, 1.0f, lc);
+        }
+        void Draw(Color color) {
+            DrawModel(_model, _position, 1.0f, color);
+        };
+        Vector3 getPosition() { return _position; }
+        Vector3 getSize()     { return _size;     }
+        void setPosition(Vector3 pos) {
+            _position = pos;
+            Calculate();
+        };
+        void setSize(Vector3 size) {
+            _size = size;
             Calculate();
         }
-        void Calculate() {
-            mesh = GenMeshCube(size.x, size.y, size.z);
-            GenMeshTangents(&mesh);
-            model = LoadModelFromMesh(mesh);
-            bounding = GetModelBoundingBox(model);
-            bounding.min += position;
-            bounding.max += position;
-            _current = true;
+
+        bool RayHit(Ray r) {
+            return GetRayCollisionBox(r, _bounds).hit;
         }
-        Vector3 getPosition() { return position; };
-        Vector3 getSize() { return size; };
-        void setPosition(Vector3 pos) { 
-            position = pos; 
-            _current = false; 
-            Calculate(); 
-        };
-        void setSize(Vector3 siz) { 
-            size = siz; 
-            _current = false; 
-            Calculate(); 
-        };
-        void Render(bool lines = false, Color lc = BLACK, float margin = .1f) {
-            DrawModelEx(model, position, Vector3 {0.0f, 0.0f, 0.0f}, 0.0f, size, col);
-            if(lines) DrawModelWiresEx(model, position, Vector3 { 0.0f, 0.0f, 0.0f }, 0.0f, Vector3 {
-                size.x + margin, size.y + margin, size.z + margin
-            }, lc);
-            DrawBoundingBox(bounding, ORANGE);
-        }
-        bool RayHit(Ray ray) {
-            return GetRayCollisionBox(ray, bounding).hit;
-        }
-        template <typename C>
-        static void RenderCubes(std::vector<C> cubes, bool lines = false, Color lc = BLACK, float margin = .1f) {
-            for(int i = 0; i < cubes.size(); i++) {
-                cubes[i]->Render(lines, lc, margin);
+        template <typename ThisType> 
+        static void RenderMany(std::vector<ThisType> entities, Color color) {
+            for(ThisType entity : entities) {
+                entity.Draw(color);
             }
+        };
+        template <typename ThisType>
+        static void RenderManyLines(std::vector<ThisType> entities, Color color, float margin = DEFAULT_LINE_MARGIN) {
+            for(ThisType entity : entities) {
+                entity.DrawLines(color, margin);
+            }
+        };
+        template <typename ThisType>
+        static void RenderManyBounds(std::vector<ThisType> entities, Color color) {
+            for(ThisType entity : entities) {
+                entity.DrawBounding(color);
+            }
+        };
+};
+
+class Cube : public Entity {
+    public:
+        Cube(Vector3 position, Vector3 size) : Entity(position, size, GenMeshCube(
+            size.x, size.y, size.z
+        )) {
+            // 
+        }
+};
+class Cylinder : public Entity {
+    public:
+        Cylinder(Vector3 position, float radius, float height, int slices) : 
+            Entity(position, Vector3 { radius * 2, height, radius * 2}, GenMeshCylinder(
+                radius, height, slices
+        )) {
+            // 
         }
 };
 
+// Gets the distance between two vectors.  Returns as a float.  
 float V3Distance(Vector3 a, Vector3 b) {
     return std::sqrt(std::pow(a.x - b.x, 2.0f) + std::pow(a.y - b.y, 2.0f) + std::pow(a.z - b.z, 2.0f));
-}
+};
 
+// Draws ray from starting position to ending position of length `len` in ray's direction.
 void VisualizeRay(Ray r, float len) {
     // ! https://answers.unity.com/questions/887344/how-do-i-move-a-vector3-a-distance-to-a-direction.html
     Vector3 newSpot = r.position + (Vector3Normalize(r.direction) * Vector3 { len, len, len });
     DrawLine3D(r.position, newSpot, RED);
-}
+};
+
+class OrbitalCamera {
+    public:
+        Camera cam = {0};
+    private:
+        Vector3 position;
+        Vector3 target;
+        Vector3 up = Vector3 {0.0f, 1.0f, 0.0f};
+        int projection = CAMERA_PERSPECTIVE;
+        int cam_mode = CAMERA_ORBITAL;
+    public:
+        OrbitalCamera(Vector3 pos, Vector3 targ, float fov = 45.0f, Vector3 upVec = Vector3 {0.0f, 1.0f, 0.0f}) {
+            position = pos;
+            targ = target;
+            up = upVec;
+            cam = {0};
+            cam.position = pos;
+            cam.target = targ;
+            cam.up = upVec;
+            cam.fovy = fov;
+            cam.projection = projection;
+        }
+        void Update() {
+            UpdateCamera(&cam, cam_mode);
+        }
+        Camera camera() {
+            return cam;
+        }
+};
 
 int main(int argc, char** args) {
 
     const int WIDTH = 800;
-    const int HEIGHT = 640;  
+    const int HEIGHT = 640; 
 
     Window window("This is the title", 800, 640);
 
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
 
-    int gridSize = 5;
-    int gridHeight = 5;
+    OrbitalCamera cam({-10.0f, 15.0f, 10.0f}, {0.0f, 0.5f, 0.0f});
 
-    Vector3 size = {1.0f, 1.0f, 1.0f};
-    Color colors[8] = {RED, ORANGE, YELLOW, GREEN, BLUE, PURPLE, PINK, BROWN};
-
-    std::vector<Cube*> cubes = {};
-    for(float y = 0.0f; y < gridHeight; y += 1.0f) {
-        for(float x = 0.0f; x < gridSize; x += 1.0f) {
-            for(float z = 0.0f; z < gridSize; z += 1.0f) {
-                Cube* c = new Cube(
-                    Vector3 {x, y, z},
-                    Vector3 {size.x, size.y, size.z},
-                    colors[GetRandomValue(0, 7)]
-                );
-                cubes.push_back(c);
-            }
-        }
-    }
-
-    Camera cam = {0};
-    cam.position = Vector3 {-10.0f, 15.0f, -10.0f};
-    cam.target = Vector3 {((float) gridSize / 2), ((float) gridHeight / 2), ((float) gridSize / 2)};
-    cam.up = Vector3 {0.0f, 1.0f, 0.0f};
-    cam.fovy = 45.0f;
-    cam.projection = CAMERA_PERSPECTIVE;
-
-    int cam_mode = CAMERA_ORBITAL;
+    Cube c(Vector3 { 0.0f, 0.0f, 0.0f }, Vector3 {1.0f, 3.0f, 1.0f });
+    Cylinder c2(Vector3 {0.0f, 0.0f, 5.0f}, 2.0f, 5.0f, 10);
 
     window.onUpdate([&](float deltaTime) {
-        UpdateCamera(&cam, cam_mode);
-
-        Cube* closest = nullptr;
-        int index = -1;
-        if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            std::cout << "Hey, I was pressed!  Delta: " << deltaTime << std::endl;
-            Vector2 mousePos = GetMousePosition();
-            Ray ray = GetMouseRay(mousePos, cam);
-            for(int i = 0; i < cubes.size(); i++) {
-                if(cubes[i]->RayHit(ray)) {
-                    // TODO: could memoize closest's distance for optimization 
-                    if(closest != nullptr && (V3Distance(cam.position, cubes[i]->getPosition()) < (V3Distance(cam.position, closest->getPosition())))) {
-                        closest = cubes[i];
-                        index = i;
-                    } else {
-                        closest = cubes[i];
-                        index = i;
-                    }
-                }
-            }
-            if(index > -1) {
-                delete closest;
-                cubes.erase(cubes.begin() + index);
-            }
-        }
-
+        cam.Update();
     });
     window.onDraw([&]() {
         BeginDrawing();
+        BeginMode3D(cam.cam);
         ClearBackground(RAYWHITE);
-        BeginMode3D(cam);
 
-        Cube::RenderCubes(cubes, false, RED, .01f);
+        Ray mouseRay = GetMouseRay(GetMousePosition(), cam.cam);
 
-        Ray ray = GetMouseRay(GetMousePosition(), cam);
-        VisualizeRay(ray, 50);
+        Color cColor = BLUE;
+        Color c2Color = BLUE;
+
+        if(c.RayHit(mouseRay)) {
+            cColor = RED;
+        }
+        if(c2.RayHit(mouseRay)) {
+            c2Color = RED;
+        }
+
+        c.Draw(cColor);
+        c2.Draw(c2Color);
+
+        c.DrawBounding(ORANGE);
+        c2.DrawBounding(ORANGE);
 
         EndMode3D();
         EndDrawing();
