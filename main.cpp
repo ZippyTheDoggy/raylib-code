@@ -27,8 +27,8 @@ int main(int argc, char** args) {
     float widthStep = (WIDTH / (timeTarget));
     float heightStep = (HEIGHT / (timeTarget));
     std::function<float(float)> fun = [&](float t) {
-        float mod = 5;
-        return std::modf(t, &mod);
+        float mod = 20;
+        return std::sin(std::modf(t, &mod) / 1.5f) / std::cos(std::modf(t, &mod) / 1.5f) * 1.5;
     };
     std::vector<Vector2> graphLines = {
         Vector2 { 0.0f, HEIGHT }
